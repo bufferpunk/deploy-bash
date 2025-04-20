@@ -1,0 +1,11 @@
+gunicorn
+dotenv
+flask
+flask-cors
+sqlalchemy
+pymupdf
+pillow
+sqlalchemy
+mysqlclient
+requests
+aiohttp
