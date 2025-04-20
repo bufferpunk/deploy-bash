@@ -45,14 +45,14 @@ bash deploy.sh [options]
 
 | Flag | Description |
 |------|-------------|
-| `--type=domain|ip`     | Deployment target type |
-| `--servers=...`        | Comma-separated list of IPs or domains |
-| `--project=name`       | Name of the project to deploy |
-| `--config=path`        | Path to optional `.env` config |
-| `--services=...`       | Comma-separated list of services to restart |
-| `--setup=only`         | Only run setup (no deployment) |
-| `--npm=false`          | Skip `npm install` in setup |
-| `--help`               | Show help |
+| `--type=domain|ip`           | Deployment target type |
+| `--servers=...`              | Comma-separated list of IPs or domains |
+| `--project=name`             | Name of the project to deploy |
+| `--config=path/to/file`      | Path to optional `.env` config |
+| `--services=...`             | Comma-separated list/array of services to restart |
+| `--setup=full|only`          | Only run setup (no deployment) |
+| `--npm`                      | Do `npm install` in setup |
+| `--help`                     | Show help |
 
 ---
 
@@ -61,11 +61,11 @@ bash deploy.sh [options]
 ```bash
 bash deploy.sh \
   --type=ip \
-  --servers=192.168.1.2,192.168.1.3 \
+  --servers=[192.168.1.2,192.168.1.3] \
   --project=my-app \
   --services=my-app.service,nginx \
-  --setup=only \
-  --npm=true
+  --setup=full \
+  --npm
 ```
 
 ---
@@ -75,12 +75,14 @@ bash deploy.sh \
 You can pass a `.env` config using `--config=config.env`. Supported variables:
 
 ```dotenv
-type=domain
-servers=myserver.com,api.myserver.com
-project=my-app
-services=my-app.service,nginx
-setup=only
-npm=true
+SERVERS="myserver.com,api.myserver.com"
+PROJECT_NAME=my-app
+SERVICES="my-app.service,nginx" (Not recommended)
+DEPLOY_DIR="/var/www/my-app"
+LOG_FILE="/var/log/deploy.log"
+TYPE="domain"
+SETUP_COMMAND="./some/bash/script.sh"
+NODE_HOME="./api" (This is where your node app is. Always use a relative path)
 ```
 
 ---
@@ -90,7 +92,10 @@ npm=true
 If you just want to initialize the remote server without deploying code:
 
 ```bash
-bash deploy.sh --setup=only --npm=false
+./deploy.sh --servers=[api1.myserver.com,api2.myserver.com] --services=[nginx,mariadb] --setup=full --npm
+./deploy.sh --config=deploy.env --setup=full --npm
+./deploy.sh --help
+# and so on...
 ```
 
 ---
@@ -125,14 +130,16 @@ The script automatically keeps old versions of your app in `versions/` on the re
 ## 📣 Real-World Proven
 
 This script has been tested and successfully used to deploy **two real-world applications** with different services and environments.
-
+One of them is Libly, an open-source project that helps you manage your library. Visit [Libly](libly.liny.studio) to check out the project.
+The other is a closed-source project, but you can find the live app at [Topically](https://topically.liny.studio).
 ---
 
 ## 💡 Tips
 
-- Alias the script for convenience:  
+- Link the script to a bin directory in your $PATH for convenience:  
   ```bash
-  alias deploy="bash /path/to/deploy.sh"
+  chmod +x deploy.sh
+  sudo ln -s ./deploy.sh /usr/local/bin/deploy
   ```
 - Add a `deploy.env` file for each project and reuse the script globally.
 - Run with `--help` to get a clean usage guide.
