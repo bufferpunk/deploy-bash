@@ -45,12 +45,12 @@ bash deploy.sh [options]
 
 | Flag | Description |
 |------|-------------|
-| `--type=domain|ip`           | Deployment target type |
+| `--type=domain\|ip`           | Deployment target type |
 | `--servers=...`              | Comma-separated list of IPs or domains |
 | `--project=name`             | Name of the project to deploy |
 | `--config=path/to/file`      | Path to optional `.env` config |
 | `--services=...`             | Comma-separated list/array of services to restart |
-| `--setup=full|only`          | Only run setup (no deployment) |
+| `--setup=full\|only`          | Only run setup (no deployment) |
 | `--npm`                      | Do `npm install` in setup |
 | `--help`                     | Show help |
 
@@ -140,6 +140,7 @@ The other is a closed-source project, but you can find the live app at [Topicall
   ```bash
   chmod +x deploy.sh
   sudo ln -s ./deploy.sh /usr/local/bin/deploy
+  # You can now run it with just `deploy`. eg: `deploy --help`
   ```
 - Add a `deploy.env` file for each project and reuse the script globally.
 - Run with `--help` to get a clean usage guide.
