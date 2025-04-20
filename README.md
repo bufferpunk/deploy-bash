@@ -130,8 +130,9 @@ The script automatically keeps old versions of your app in `versions/` on the re
 ## 📣 Real-World Proven
 
 This script has been tested and successfully used to deploy **two real-world applications** with different services and environments.
-One of them is Libly, an open-source project that helps you manage your library. Visit [Libly](libly.liny.studio) to check out the project.
+One of them is Libly, an open-source project that helps you manage your library. Visit [Libly](https://libly.liny.studio) to check out the project.
 The other is a closed-source project, but you can find the live app at [Topically](https://topically.liny.studio).
+
 ---
 
 ## 💡 Tips
