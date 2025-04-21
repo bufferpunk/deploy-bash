@@ -45,14 +45,15 @@ bash deploy.sh [options]
 
 | Flag | Description |
 |------|-------------|
-| `--type=domain\|ip`           | Deployment target type |
+| `--type=domain\|ip`          | Deployment target type |
 | `--servers=...`              | Comma-separated list of IPs or domains |
 | `--project=name`             | Name of the project to deploy |
 | `--config=path/to/file`      | Path to optional `.env` config |
 | `--services=...`             | Comma-separated list/array of services to restart |
-| `--setup=full\|only`          | Only run setup (no deployment) |
+| `--setup=full\|only`         | Only run setup (no deployment) |
 | `--npm`                      | Do `npm install` in setup |
 | `--help`                     | Show help |
+| `--rollback=number`          | Rollback to a specific version |
 
 ---
 
