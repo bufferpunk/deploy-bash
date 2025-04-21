@@ -112,9 +112,12 @@ If you just want to initialize the remote server without deploying code:
 
 ## 📦 Versioning & Rollback
 
-The script automatically keeps old versions of your app in `versions/` on the remote server. You can manually roll back by extracting an older archive.
+The script automatically keeps old versions of your app in `releases/` folder on the remote server. You can manually roll back by extracting an older archive or do:
 
-> 🎯 Coming soon: a built-in rollback command
+```bash
+  deploy.sh --config=deployment/deploy.conf --services=[nginx] --rollback=3 # Rollback to the 3rd last version
+```
+This will extract the 3rd last version of the archive in the `releases/` folder and make it the current version.
 
 ---
 

@@ -24,7 +24,7 @@ for i in "$@"; do
         old="$OLDPWD"
         if [ -f "$old/$config" ]; then
             source "$old/$config";
-            echo -e "${BGreen}Using configuration from $config file.${Color_Off}";
+            echo -e "${Cyan}Using configuration from $config file.${Color_Off}";
             IFS=',' read -r -a SERVERS <<< "$SERVERS";
             IFS=',' read -r -a SERVICES <<< "$SERVICES";
         else
@@ -41,11 +41,42 @@ for i in "$@"; do
             echo -e "${BRed}Error: Invalid TYPE '$TYPE'. Please use 'domain' or 'ip'. ${Color_Off}"
             exit 1
         fi
+    elif [[ $i =~ ^--rollback= ]]; then
+        ROLLBACK="${i#*=}"
+        if ! [[ "$ROLLBACK" =~ ^[0-9]+$ ]]; then
+            echo -e "${BRed}Error: Invalid ROLLBACK value '$ROLLBACK'. Please provide a number.${Color_Off}"
+            exit 1
+        fi
+        echo -e "${BCyan}You included the rollback option '$ROLLBACK'.${Color_Off}"
+    elif [[ $i =~ ^--deploy-dir= ]]; then
+        DEPLOY_DIR="${i#*=}"
+        export DEPLOY_DIR="$DEPLOY_DIR"
     elif [[ $i =~ ^--setup= ]]; then
         setup="${i#*=}"
         if [[ "$setup" != "full" && "$setup" != "only" ]]; then
             echo -e "${BRed}Error: Invalid setup option '$setup'. Please use 'full' or 'only'. ${Color_Off}"
             exit 1
+        else
+            echo -e "${BCyan}You included the setup option '$setup'.${Color_Off}"
+            printf "${BCyan}How many commands do you want to run on the remote server(s)?: ${Color_Off}"
+            read -r NUMBER
+            SETUP_COMMAND=""
+            if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
+                echo -e "${BRed}Error: Invalid number of commands '$NUMBER'. Please provide a number.${Color_Off}"
+                exit 1
+            fi
+            for ((i=1; i<=NUMBER; i++)); do
+                printf "${BCyan}Enter command $i: ${Color_Off}"
+                read -r command
+                if [[ -z "$command" ]]; then
+                    echo -e "${BRed}Error: Command cannot be empty. Please provide a valid command.${Color_Off}"
+                    exit 1
+                fi
+                SETUP_COMMAND="$SETUP_COMMAND$command && "
+                echo -e "${Green}Command $i added: $command${Color_Off}"
+            done
+            SETUP_COMMAND="${SETUP_COMMAND%&& }" # Remove trailing '&&'
+            echo -e "${Green}Setup command set to: $SETUP_COMMAND${Color_Off}"
         fi
     elif [[ $i =~ ^--project= ]]; then
         PROJECT_NAME="${i#*=}"
@@ -86,8 +117,7 @@ if [ -z "$PROJECT_NAME" ]; then
         echo -e "${BRed}Could not find '$PROJECT_NAME' in $(pwd) ${Color_Off}"
         exit 1
     fi
-    echo -e "${BGreen}Project name set to: ${BBlue}$PROJECT_NAME${Color_Off}${Cyan}\n\
-    You can set the PROJECT_NAME environment variable in your shell profile to avoid this prompt in the future or pass --project in flags.${Color_Off}"
+    echo -e "${Cyan}You can set the PROJECT_NAME environment variable in your shell profile to avoid this prompt in the future or pass --project in flags.${Color_Off}"
     echo -e "${Cyan}Please note that the project name must match the name of the folder in which the project is located.${Color_Off}"
 fi
 
@@ -114,7 +144,7 @@ if [ "$TYPE" == "domain" ]; then
             exit 1
         fi
     done
-    printf "${Green}Done! All domain names are valid.${Color_Off}\n"
+    echo -e "${Green}Done! All domain names are valid.${Color_Off}\n"
 else
     # Check for valid IP addresses
     for s in "${SERVERS[@]}"; do
@@ -135,12 +165,32 @@ for i in "${SERVICES[@]}"; do
     fi
 done
 
-echo -e "\n${BYellow}Please note that this script does not provide full graceful error handling, so that you don't live with a broken app.${Color_Off}\n"
-if [ "$setup" == "only" ]; then
-    if [ -z "$SETUP_COMMAND" ]; then
-        echo -e "${BRed}Error: SETUP_COMMAND is not set in the configuration file. Please provide a valid command.${Color_Off}"
+if [ -n $ROLLBACK ]; then
+    if [[ -z "$SERVERS" || -z "$SERVICES" ]]; then
+        echo -e "${BRed}Error: Please provide servers for rollback and services to restart ${Color_Off}"
         exit 1
     fi
+    for i in "${SERVERS[@]}"; do
+        echo -e "${BBlue}Rolling back on server: ${BYellow}\t$i\t...\n${Color_Off}"
+        ssh ubuntu@"$i" "bash -c '
+            cd $DEPLOY_DIR/
+            rm -rf ../current
+            f=\$(ls -ut | grep "$PROJECT_NAME" | head -n +$((ROLLBACK)) | tail -n +$((ROLLBACK)))
+            echo -e \"${Cyan}Rolling back to version: ${BCyan}\$f${Color_Off}\n\"
+            ln -s \$(readlink -f \$f) ../current
+            ls -l .. | grep current
+            sudo systemctl restart $restart_services
+            echo -e \"${Cyan}Service statuses after restart:${Color_Off}\n\"
+            sudo systemctl status $restart_services --no-pager
+            echo -e \"${Green}Rollback completed on server name: $i.${Color_Off}\n\"
+        '"
+    done
+    echo -e "${BCyan}Done. Bye!${Color_Off}"
+    exit 0
+fi
+
+echo -e "\n${BYellow}Please note that this script does not provide full graceful error handling, so that you don't live with a broken app.${Color_Off}\n"
+if [ "$setup" == "only" ]; then
     for i in "${SERVERS[@]}"; do
         echo -e "${Green}Skipping deployment and going for server setup. This will fail if there is no deployed version.${Color_Off}"
         echo -e "${BBlue}Running Setup command: ${Cyan} $SETUP_COMMAND ...${Color_Off}\n"
@@ -153,7 +203,7 @@ if [ "$setup" == "only" ]; then
             else
                 echo \"❌ Some services might be dead or unavailable. Please check your setup. Full setup failed.\"
             fi'"
-        
+
     done
     echo -e "\n${BCyan}Done. Bye!${Color_Off}"
     exit 0
