@@ -164,7 +164,7 @@ Made with love by [@Scion-Kin](https://github.com/Scion-Kin)
 MIT – do whatever you want, just don't blame me if you rage-deploy to prod 😄
 
 ## 🐞 Issues
-If you find any bugs or have feature requests, please open an issue on GitHub.
+If you find any bugs or have feature requests, please open an [issue](https://github.com/Scion-Kin/deployer/issues) on GitHub.
 
 ## 📜 Changelog
 - **v1.0** - Initial release with core features
