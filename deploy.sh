@@ -165,7 +165,7 @@ for i in "${SERVICES[@]}"; do
     fi
 done
 
-if [ -n $ROLLBACK ]; then
+if [ -n "$ROLLBACK" ]; then
     if [[ -z "$SERVERS" || -z "$SERVICES" ]]; then
         echo -e "${BRed}Error: Please provide servers for rollback and services to restart ${Color_Off}"
         exit 1
@@ -280,19 +280,19 @@ for i in "${SERVERS[@]}"; do
         echo -e "${Cyan}Npm install was a success.${Color_Off}\n"
     fi
 
-    define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\"$i\"#' $JSHOST" || echo "echo \"No JSHOST Defined. Skipping modification.\"")
-    ssh ubuntu@"$i" "bash -c 'cd $DEPLOY_DIR/$file/ && sudo rm -rf /tmp/$file.tgz && $define_api
-        if sudo systemctl status $restart_services >/dev/null 2>&1; then
-            echo -e \"✅ Services are running fine. Restarting: $restart_services\"
-            sudo systemctl restart $restart_services && echo \"✅ Services restarted successfully.\"
-        else
-            echo \"❌ Some services might be dead or unavailable. Please check your setup.\"
-        fi
-    '"
+    define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"$i\\\"#' $JSHOST" || echo "echo 'No JSHOST Defined. Skipping modification.'")
+    ssh ubuntu@"libly.liny.studio" bash <<EOF
+    cd $DEPLOY_DIR/$file/ && sudo rm -rf /tmp/$file.tgz
+    $define_api
+    if sudo systemctl status $restart_services >/dev/null 2>&1; then
+        echo -e "${BGreen}✅${Color_Off} Services are running fine. Restarting: $restart_services"
+        sudo systemctl restart $restart_services && echo -e "${BGreen}✅${Color_Off} Services restarted successfully."
+    else
+        echo "❌ Some services might be dead or unavailable. Please check your setup."
+    fi
+EOF
 
-    echo -e "${Green}Deleted the archive from /tmp/, and restarted the Nginx server and all services.${Color_Off}\n"
-    echo -e "${Green}Your newest app release ($file) is now live on -> ($i)!${Color_Off}"
-    echo -e "You can visit: $i/ to use app if the services are set up correctly.\n"
+    echo -e "${Green}Your newest app release ($file) is now live on -> ($i)!${Color_Off}\nYou can visit: $i/ to use app if the services are set up correctly.\n"
 	) &
 done
 wait
