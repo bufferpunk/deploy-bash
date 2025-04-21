@@ -82,7 +82,6 @@ SERVICES="my-app.service,nginx" (Not recommended)
 DEPLOY_DIR="/var/www/my-app"
 LOG_FILE="/var/log/deploy.log"
 TYPE="domain"
-SETUP_COMMAND="./some/bash/script.sh"
 NODE_HOME="./api" (This is where your node app is. Always use a relative path)
 ```
 
