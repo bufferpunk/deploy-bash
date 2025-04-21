@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 ## ./deploy.sh
 ## Deploys a web app to given SERVERS
 ## Copyright (C) 2025 Buffer Park. All rights reserved.
@@ -75,7 +75,7 @@ for i in "$@"; do
                 SETUP_COMMAND="$SETUP_COMMAND$command && "
                 echo -e "${Green}Command $i added: $command${Color_Off}"
             done
-            SETUP_COMMAND="${SETUP_COMMAND%&& }" # Remove trailing '&&'
+            SETUP_SSH_USERCOMMAND="${SETUP_COMMAND%&& }" # Remove trailing '&&'
             echo -e "${Green}Setup command set to: $SETUP_COMMAND${Color_Off}"
         fi
     elif [[ $i =~ ^--project= ]]; then
@@ -172,7 +172,7 @@ if [ -n "$ROLLBACK" ]; then
     fi
     for i in "${SERVERS[@]}"; do
         echo -e "${BBlue}Rolling back on server: ${BYellow}\t$i\t...\n${Color_Off}"
-        ssh ubuntu@"$i" "bash -c '
+        ssh -i "$SSH_KEY" "$SSH_USER@$i" "bash -c '
             cd $DEPLOY_DIR/
             rm -rf ../current
             f=\$(ls -ut | grep "$PROJECT_NAME" | head -n +$((ROLLBACK)) | tail -n +$((ROLLBACK)))
@@ -195,7 +195,7 @@ if [ "$setup" == "only" ]; then
         echo -e "${Green}Skipping deployment and going for server setup. This will fail if there is no deployed version.${Color_Off}"
         echo -e "${BBlue}Running Setup command: ${Cyan} $SETUP_COMMAND ...${Color_Off}\n"
         runcommand=$([[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]] && echo "$SETUP_COMMAND && cd $DEPLOY_DIR/../current/$NODE_HOME && npm install" || echo "$SETUP_COMMAND")
-        ssh ubuntu@"$i" "bash -c '
+        ssh -i "$SSH_KEY" "$SSH_USER@$i" "bash -c '
             $runcommand
             if sudo systemctl status $restart_services >/dev/null 2>&1; then
                 echo \"✅ Services are running fine. Restarting: $restart_services\" && sudo systemctl restart $restart_services
@@ -251,37 +251,37 @@ for i in "${SERVERS[@]}"; do
     echo -e "${BBlue}Deploying on server: ${BYellow}\t$i\t...\n${Color_Off}"
     if [[ "$*" =~ (^|[[:space:]])--apt-update($|[[:space:]]) ]]; then
         echo -e "${Cyan}Running apt-get update...${Color_Off}"
-        ssh ubuntu@"$i" "sudo apt-get update"
+        ssh -i "$SSH_KEY" "$SSH_USER@$i" "sudo apt-get update"
         echo -e "${Cyan}Server updated successfully.${Color_Off}"
     fi
 
-    scp "$inputFile/versions/$file.tgz" "ubuntu@$i:/tmp/"
+    scp -i "$SSH_KEY" "$inputFile/versions/$file.tgz" "$SSH_USER@$i:/tmp/"
     echo ""
     echo -e "${Green}Copied archive file to server:${Color_Off}\t$i in directory:\t/tmp/\n"
     echo -e "${Blue}Extracting archive to:${Color_Off}\t$DEPLOY_DIR/ ..."
-    ssh ubuntu@"$i" "mkdir -p $DEPLOY_DIR/new && tar -xzf /tmp/$file.tgz -C $DEPLOY_DIR/new && mv $DEPLOY_DIR/new $DEPLOY_DIR/$file"
+    ssh -i "$SSH_KEY" "$SSH_USER@$i" "mkdir -p $DEPLOY_DIR/new && tar -xzf /tmp/$file.tgz -C $DEPLOY_DIR/new && mv $DEPLOY_DIR/new $DEPLOY_DIR/$file"
     echo -e "${Cyan}Here are the new contents of the releases directory:${Color_Off}\n"
 
-    ssh ubuntu@"$i" "sudo rm -rf $DEPLOY_DIR/new/ && ls $DEPLOY_DIR/ | sed 's/^/\t\t\t/' && sudo rm -rf $DEPLOY_DIR/../current && ln -s $DEPLOY_DIR/$file $DEPLOY_DIR/../current"
+    ssh -i "$SSH_KEY" "$SSH_USER@$i" "sudo rm -rf $DEPLOY_DIR/new/ && ls $DEPLOY_DIR/ | sed 's/^/\t\t\t/' && sudo rm -rf $DEPLOY_DIR/../current && ln -s $DEPLOY_DIR/$file $DEPLOY_DIR/../current"
     echo -e "\n${Green}Finished making a symbolic link for the new release. Deleting old releases...${Color_Off}\n"
-    ssh ubuntu@"$i" "cd $DEPLOY_DIR/ && ls -ut | grep "$PROJECT_NAME" | tail -n +$((KEEP + 1)) | xargs rm -rf"
+    ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/ && ls -ut | grep "$PROJECT_NAME" | tail -n +$((KEEP + 1)) | xargs rm -rf"
     ls "$PROJECT_NAME/versions" -ut | grep "$PROJECT_NAME" | tail -n +$((KEEP + 1)) | xargs rm -rf
 
     echo -e "${Cyan}Deleted old releases, keeping the last $KEEP versions.${Color_Off}\n"
     if [ "$setup" == 'full' ]; then
         echo -e "${Cyan}Running Setup command...${Black} ${SETUP_COMMAND}${Color_Off}"
-        ssh -tt ubuntu@"$i" "$SETUP_COMMAND"
+        ssh -i "$SSH_KEY" -tt "$SSH_USER@$i" "$SETUP_COMMAND"
         echo -e "${Cyan}Setup completed successfully.${Color_Off}\n"
     fi
 
     if [[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]]; then
         echo -e "${Cyan}Running npm install on the latest version...${Color_Off}"
-        ssh ubuntu@"$i" "cd $DEPLOY_DIR/$file/$NODE_HOME && npm install"
+        ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/$file/$NODE_HOME && npm install"
         echo -e "${Cyan}Npm install was a success.${Color_Off}\n"
     fi
 
     define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"$i\\\"#' $JSHOST" || echo "echo 'No JSHOST Defined. Skipping modification.'")
-    ssh ubuntu@"libly.liny.studio" bash <<EOF
+    ssh -i "$SSH_KEY" "$SSH_USER@$i" bash <<EOF
     cd $DEPLOY_DIR/$file/ && sudo rm -rf /tmp/$file.tgz
     $define_api
     if sudo systemctl status $restart_services >/dev/null 2>&1; then
