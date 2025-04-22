@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
-## ./deploy.sh
-## Deploys a web app to given SERVERS
+## Deploys a web app to given servers. Check out 
+## This script is designed for Debian-based systems. Support for other distros will be added later.
 ## Copyright (C) 2025 Buffer Park. All rights reserved.
 ## MIT License
-
-set -e
-trap 'echo -e "\n${BRed}Error: An error occurred during deployment. Please check your inputs and try again.${Color_Off}"' ERR
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
@@ -16,8 +13,32 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 source "$SCRIPT_DIR/awesome.conf" # For colors and Usage message
 
-cd ..
+set -e
+trap 'echo -e "\n${BRed}Error: An error occurred during deployment. Please check your inputs and try again.${Color_Off}"' ERR
 
+SCRIPT_PATH="$DIR/$(basename "$SOURCE")"
+IN_PATH=false
+IFS=':' read -ra PATH_DIRS <<< "$PATH"
+for dir in "${PATH_DIRS[@]}"; do
+  if [[ "$SCRIPT_PATH" == "$dir/"* ]]; then
+    IN_PATH=true
+    break
+  fi
+done
+
+if ! $IN_PATH && [[ ! -f /usr/local/bin/deploy && ! -L /usr/local/bin/deploy ]]; then
+  echo "Warning: Script is not in your \$PATH. Adding it will allow you to run it from anywhere."
+  read -p "Do you want to add it to your \$PATH? (y/n) " answer
+  if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
+    echo "Adding script to your \$PATH..."
+    sudo ln -s "$SCRIPT_PATH" /usr/local/bin/deploy
+    echo -e "Script added to your \$PATH. You can now run it from anywhere with the command:${BCyan} deploy [options] ${Color_Off}\n"
+  else
+    echo "Script not added to your \$PATH. You can run it using the full path: $SCRIPT_PATH"
+  fi
+fi
+
+cd ..
 for i in "$@"; do
     if [[ $i =~ ^--config= ]]; then
         config="${i#*=}"
@@ -63,7 +84,7 @@ for i in "$@"; do
             SETUP_COMMAND=""
             if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
                 echo -e "${BRed}Error: Invalid number of commands '$NUMBER'. Please provide a number.${Color_Off}"
-                exit 1
+                exit 1O
             fi
             for ((i=1; i<=NUMBER; i++)); do
                 printf "${BCyan}Enter command $i: ${Color_Off}"
@@ -105,8 +126,8 @@ done
 KEEP=${KEEP:-5}
 
 if [ -z "$PROJECT_NAME" ]; then
-    echo -e "${BYellow}WARNING: PROJECT_NAME is not set in your environment. Falling back to user input. ${Color_Off}\n"
-    echo -e "${BCyan}What is your project name?${Color_Off}"
+    echo -e "${BYellow}WARNING: PROJECT_NAME is not set in your config. Falling back to user input. ${Color_Off}\n"
+    echo -e "${BCyan}What is your project's name?${Color_Off}"
     read -r PROJECT_NAME
     if [ -z "$PROJECT_NAME" ]; then
         echo -e "${BRed}Error: No project name provided. Exiting...${Color_Off}"
@@ -224,7 +245,7 @@ echo -e "Deployment will commence in 10 seconds. Check if you entered correct in
 
 spinner="/|\\-/"
 for ((j=10; j>0; j--)); do
-    echo -ne "${Yellow}Starting deployment in $j seconds... ${spinner:$((j%4)):1} \r"
+    echo -ne "${Yellow}\tStarting deployment in $j seconds... ${spinner:$((j%4)):1} \r"
     sleep 1
 done
 echo -e "\n"
