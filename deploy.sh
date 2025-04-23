@@ -78,10 +78,10 @@ for i in "$@"; do
             echo -e "${BRed}Error: Invalid setup option '$setup'. Please use 'full' or 'only'. ${Color_Off}"
             exit 1
         else
-            echo -e "${BCyan}You included the setup option '$setup'.${Color_Off}"
+            echo -e "${BCyan}You included the setup option '$setup'.${Color_Off} (Please be careful with this option, as it can cause issues if not used correctly.)"
             printf "${BCyan}How many commands do you want to run on the remote server(s)?: ${Color_Off}"
             read -r NUMBER
-            SETUP_COMMAND=""
+            SETUP_COMMAND="echo -e \"${Cyan}Executing commands... ${Color_Off}\""
             if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
                 echo -e "${BRed}Error: Invalid number of commands '$NUMBER'. Please provide a number.${Color_Off}"
                 exit 1O
@@ -93,11 +93,9 @@ for i in "$@"; do
                     echo -e "${BRed}Error: Command cannot be empty. Please provide a valid command.${Color_Off}"
                     exit 1
                 fi
-                SETUP_COMMAND="$SETUP_COMMAND$command && "
+                SETUP_COMMAND="$SETUP_COMMAND && $command"
                 echo -e "${Green}Command $i added: $command${Color_Off}"
             done
-            SETUP_SSH_USERCOMMAND="${SETUP_COMMAND%&& }" # Remove trailing '&&'
-            echo -e "${Green}Setup command set to: $SETUP_COMMAND${Color_Off}"
         fi
     elif [[ $i =~ ^--project= ]]; then
         PROJECT_NAME="${i#*=}"
@@ -213,16 +211,18 @@ fi
 echo -e "\n${BYellow}Please note that this script does not provide full graceful error handling, so that you don't live with a broken app.${Color_Off}\n"
 if [ "$setup" == "only" ]; then
     for i in "${SERVERS[@]}"; do
-        echo -e "${Green}Skipping deployment and going for server setup. This will fail if there is no deployed version.${Color_Off}"
-        echo -e "${BBlue}Running Setup command: ${Cyan} $SETUP_COMMAND ...${Color_Off}\n"
+        echo -e "${Green}Skipping deployment and going for server setup. This will fail if there is no deployed version.${Color_Off}\n"
         runcommand=$([[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]] && echo "$SETUP_COMMAND && cd $DEPLOY_DIR/../current/$NODE_HOME && npm install" || echo "$SETUP_COMMAND")
         ssh -i "$SSH_KEY" "$SSH_USER@$i" "bash -c '
             $runcommand
-            if sudo systemctl status $restart_services >/dev/null 2>&1; then
-                echo \"✅ Services are running fine. Restarting: $restart_services\" && sudo systemctl restart $restart_services
-                echo -e \"${Green}Setup completed successfully on server name: $i.${Color_Off}\"
-            else
-                echo \"❌ Some services might be dead or unavailable. Please check your setup. Full setup failed.\"
+            if [ -n $restart_services ]; then
+                if sudo systemctl status $restart_services >/dev/null 2>&1; then
+                    echo "✅ Services are running fine. Restarting: $restart_services"
+                    sudo systemctl restart $restart_services
+                    echo -e \"${Green}Setup completed successfully on server name: $i.${Color_Off}\"
+                else
+                    echo "❌ Some services might be dead or unavailable. Please check your setup. Full setup failed."
+                fi
             fi'"
 
     done
@@ -302,15 +302,18 @@ for i in "${SERVERS[@]}"; do
     fi
 
     define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"$i\\\"#' $JSHOST" || echo "echo 'No JSHOST Defined. Skipping modification.'")
-    ssh -i "$SSH_KEY" "$SSH_USER@$i" bash <<EOF
-    cd $DEPLOY_DIR/$file/ && sudo rm -rf /tmp/$file.tgz
-    $define_api
-    if sudo systemctl status $restart_services >/dev/null 2>&1; then
-        echo -e "${BGreen}✅${Color_Off} Services are running fine. Restarting: $restart_services"
-        sudo systemctl restart $restart_services && echo -e "${BGreen}✅${Color_Off} Services restarted successfully."
-    else
-        echo "❌ Some services might be dead or unavailable. Please check your setup."
-    fi
+    ssh -i "$SSH_KEY" "$SSH_USER@$i" <<EOF
+        cd $DEPLOY_DIR/$file/ && sudo rm -rf /tmp/$file.tgz
+        $define_api
+        if [ -n $restart_services ]; then
+            if sudo systemctl status $restart_services >/dev/null 2>&1; then
+                echo "\n✅ Services are running fine. Restarting: $restart_services"
+                sudo systemctl restart $restart_services
+                echo -e "${Green}Setup completed successfully on server name: $i.${Color_Off}"
+            else
+                echo "❌ Some services might be dead or unavailable. Please check your setup. Full setup failed."
+            fi
+        fi
 EOF
 
     echo -e "${Green}Your newest app release ($file) is now live on -> ($i)!${Color_Off}\nYou can visit: $i/ to use app if the services are set up correctly.\n"
