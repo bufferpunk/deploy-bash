@@ -78,28 +78,27 @@ for i in "$@"; do
             echo -e "${BRed}Error: Invalid setup option '$setup'. Please use 'full' or 'only'. ${Color_Off}"
             exit 1
         else
-            echo -e "${BCyan}You included the setup option '$setup'.${Color_Off} (Please be careful with this option, as it can cause issues if not used correctly.)"
+            echo -e "\nYou included the setup option '$setup'. (Please be careful with this option, as it can cause issues if not used correctly.)"
             printf "${BCyan}How many commands do you want to run on the remote server(s)?: ${Color_Off}"
             read -r NUMBER
-            SETUP_COMMAND="echo -e \"${Cyan}Executing commands... ${Color_Off}\""
+            SETUP_COMMAND="echo -e '${Cyan}Executing commands... ${Color_Off}\n'"
             if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
                 echo -e "${BRed}Error: Invalid number of commands '$NUMBER'. Please provide a number.${Color_Off}"
-                exit 1O
+                exit 1
             fi
-            for ((i=1; i<=NUMBER; i++)); do
-                printf "${BCyan}Enter command $i: ${Color_Off}"
+            for ((j=1; j<=NUMBER; j++)); do
+                printf "${BCyan}Enter command $j: ${Color_Off}"
                 read -r command
                 if [[ -z "$command" ]]; then
                     echo -e "${BRed}Error: Command cannot be empty. Please provide a valid command.${Color_Off}"
                     exit 1
                 fi
                 SETUP_COMMAND="$SETUP_COMMAND && $command"
-                echo -e "${Green}Command $i added: $command${Color_Off}"
+                echo -e "${Green}Command $j added: $command${Color_Off}"
             done
         fi
     elif [[ $i =~ ^--project= ]]; then
         PROJECT_NAME="${i#*=}"
-        export PROJECT_NAME="$PROJECT_NAME"
         if [ ! -d "$PROJECT_NAME" ]; then
             echo -e "${BRed} Could not find $PROJECT_NAME in $(pwd) ${Color_Off}"
             exit 1
@@ -177,7 +176,7 @@ fi
 restart_services=""
 for i in "${SERVICES[@]}"; do
     if [[ "$i" =~ ^[a-zA-Z0-9_]+$ ]]; then
-        restart_services="$restart_services $i"
+        restart_services="${restart_services} $i"
     else
         echo -e "${BRed}Error:${Color_Off} ${Red}Invalid service name '$i'. Only alphanumeric characters and underscores are allowed.${Color_Off}"
         exit 1
@@ -185,45 +184,58 @@ for i in "${SERVICES[@]}"; do
 done
 
 if [ -n "$ROLLBACK" ]; then
-    if [[ -z "$SERVERS" || -z "$SERVICES" ]]; then
+    if [[ -n "${SERVERS[*]}" && -n "${SERVICES[*]}" ]]; then
+        for i in "${SERVERS[@]}"; do
+            echo -e "${BBlue}Rolling back on server: ${BYellow}\t$i\t...\n${Color_Off}"
+            ssh -i "$SSH_KEY" "$SSH_USER@$i" "bash -c '
+                cd $DEPLOY_DIR/
+                rm -rf ../current
+                f=\$(ls -ut | grep $PROJECT_NAME | head -n +$((ROLLBACK)) | tail -n +$((ROLLBACK)))
+                echo -e \"${Cyan}Rolling back to version: ${BCyan}\$f${Color_Off}\n\"
+                ln -s \$(readlink -f \$f) ../current
+                ls -l .. | grep current
+                sudo systemctl restart ${restart_services[*]}
+                echo -e \"${Cyan}Service statuses after restart:${Color_Off}\n\"
+                sudo systemctl status ${restart_services[*]} --no-pager
+                echo -e \"${Green}Rollback completed on server name: $i.${Color_Off}\n\"
+            '"
+        done
+        echo -e "${BCyan}Done. Bye!${Color_Off}"
+        exit 0
+    else
         echo -e "${BRed}Error: Please provide servers for rollback and services to restart ${Color_Off}"
         exit 1
     fi
-    for i in "${SERVERS[@]}"; do
-        echo -e "${BBlue}Rolling back on server: ${BYellow}\t$i\t...\n${Color_Off}"
-        ssh -i "$SSH_KEY" "$SSH_USER@$i" "bash -c '
-            cd $DEPLOY_DIR/
-            rm -rf ../current
-            f=\$(ls -ut | grep "$PROJECT_NAME" | head -n +$((ROLLBACK)) | tail -n +$((ROLLBACK)))
-            echo -e \"${Cyan}Rolling back to version: ${BCyan}\$f${Color_Off}\n\"
-            ln -s \$(readlink -f \$f) ../current
-            ls -l .. | grep current
-            sudo systemctl restart $restart_services
-            echo -e \"${Cyan}Service statuses after restart:${Color_Off}\n\"
-            sudo systemctl status $restart_services --no-pager
-            echo -e \"${Green}Rollback completed on server name: $i.${Color_Off}\n\"
-        '"
-    done
-    echo -e "${BCyan}Done. Bye!${Color_Off}"
-    exit 0
 fi
 
 echo -e "\n${BYellow}Please note that this script does not provide full graceful error handling, so that you don't live with a broken app.${Color_Off}\n"
 if [ "$setup" == "only" ]; then
     for i in "${SERVERS[@]}"; do
+        define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"$i\\\"#' $JSHOST" || echo "echo 'No JSHOST Defined. Skipping modification.'")
+
         echo -e "${Green}Skipping deployment and going for server setup. This will fail if there is no deployed version.${Color_Off}\n"
-        runcommand=$([[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]] && echo "$SETUP_COMMAND && cd $DEPLOY_DIR/../current/$NODE_HOME && npm install" || echo "$SETUP_COMMAND")
-        ssh -i "$SSH_KEY" "$SSH_USER@$i" "bash -c '
-            $runcommand
-            if [ -n $restart_services ]; then
-                if sudo systemctl status $restart_services >/dev/null 2>&1; then
+        echo -e "${Yellow}BEGIN Server MOTD: \n${Color_Off}"
+        ssh -T -q -i "$SSH_KEY" "$SSH_USER@$i" <<EOF
+            echo -e "${Yellow}END Server MOTD.${Color_Off}\n"
+            $SETUP_COMMAND
+            cd $DEPLOY_DIR/../current/$NODE_HOME
+            if which npm >/dev/null 2>&1 && [[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]]; then
+                npm install && echo -e "${Cyan}Npm install was a success.${Color_Off}\n"
+            elif ! which npm >/dev/null 2>&1; then
+                echo -e "\n${BRed}Npm not found. Please install it.${Color_Off}\n"
+            fi
+            if [ -n "${restart_services[@]}" ]; then
+                if sudo systemctl status ${restart_services} >/dev/null 2>&1; then
                     echo "✅ Services are running fine. Restarting: $restart_services"
                     sudo systemctl restart $restart_services
-                    echo -e \"${Green}Setup completed successfully on server name: $i.${Color_Off}\"
+                    echo -e "${Green}Setup completed on server name: $i.${Color_Off}"
                 else
                     echo "❌ Some services might be dead or unavailable. Please check your setup. Full setup failed."
                 fi
-            fi'"
+            fi
+            cd - > /dev/null && cd $DEPLOY_DIR/../current
+            $define_api
+EOF
 
     done
     echo -e "\n${BCyan}Done. Bye!${Color_Off}"
@@ -285,38 +297,37 @@ for i in "${SERVERS[@]}"; do
 
     ssh -i "$SSH_KEY" "$SSH_USER@$i" "sudo rm -rf $DEPLOY_DIR/new/ && ls $DEPLOY_DIR/ | sed 's/^/\t\t\t/' && sudo rm -rf $DEPLOY_DIR/../current && ln -s $DEPLOY_DIR/$file $DEPLOY_DIR/../current"
     echo -e "\n${Green}Finished making a symbolic link for the new release. Deleting old releases...${Color_Off}\n"
-    ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/ && ls -ut | grep "$PROJECT_NAME" | tail -n +$((KEEP + 1)) | xargs rm -rf"
-    ls "$PROJECT_NAME/versions" -ut | grep "$PROJECT_NAME" | tail -n +$((KEEP + 1)) | xargs rm -rf
+    ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/ && ls -ut | grep $PROJECT_NAME | tail -n +$((KEEP + 1)) | xargs rm -rf"
+    cd "$PROJECT_NAME/versions" && ls -ut | grep "$PROJECT_NAME" | tail -n +$((KEEP + 1)) | xargs rm -rf && cd - > /dev/null
 
     echo -e "${Cyan}Deleted old releases, keeping the last $KEEP versions.${Color_Off}\n"
     if [ "$setup" == 'full' ]; then
-        echo -e "${Cyan}Running Setup command...${Black} ${SETUP_COMMAND}${Color_Off}"
-        ssh -i "$SSH_KEY" -tt "$SSH_USER@$i" "$SETUP_COMMAND"
-        echo -e "${Cyan}Setup completed successfully.${Color_Off}\n"
+        ssh -T -i "$SSH_KEY" "$SSH_USER@$i" "$SETUP_COMMAND"
+        echo -e "${Cyan}Setup command executed successfully.${Color_Off}\n"
     fi
 
     if [[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]]; then
-        echo -e "${Cyan}Running npm install on the latest version...${Color_Off}"
-        ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/$file/$NODE_HOME && npm install"
-        echo -e "${Cyan}Npm install was a success.${Color_Off}\n"
+        echo -e "${Cyan}Running npm install on the latest version...${Color_Off}\n"
+        ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/$file/$NODE_HOME && if which npm >/dev/null 2>&1; then npm install && echo -e '${Cyan}Npm install was a success.${Color_Off}\n'; else echo -e '${Red}Npm not found. Please install it.\n${Color_Off}'; fi"
     fi
 
     define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"$i\\\"#' $JSHOST" || echo "echo 'No JSHOST Defined. Skipping modification.'")
-    ssh -i "$SSH_KEY" "$SSH_USER@$i" <<EOF
+
+    ssh -T -i "$SSH_KEY" "$SSH_USER@$i" <<EOF
         cd $DEPLOY_DIR/$file/ && sudo rm -rf /tmp/$file.tgz
         $define_api
-        if [ -n $restart_services ]; then
-            if sudo systemctl status $restart_services >/dev/null 2>&1; then
-                echo "\n✅ Services are running fine. Restarting: $restart_services"
-                sudo systemctl restart $restart_services
-                echo -e "${Green}Setup completed successfully on server name: $i.${Color_Off}"
+        if [ -n "${restart_services[@]}" ]; then
+            if sudo systemctl status ${restart_services} >/dev/null 2>&1; then
+                echo "\n${Green}✅ Services are running fine.${Color_off} Restarting: ${restart_services[@]}"
+                sudo systemctl restart ${restart_services[@]}
+                echo -e "${Green}✅ Setup completed successfully on server name: $i.${Color_Off}"
             else
                 echo "❌ Some services might be dead or unavailable. Please check your setup. Full setup failed."
             fi
         fi
 EOF
 
-    echo -e "${Green}Your newest app release ($file) is now live on -> ($i)!${Color_Off}\nYou can visit: $i/ to use app if the services are set up correctly.\n"
+    echo -e "${Green}Your newest app release ($file) is now live on -> ($i)!${Color_Off}\nYou can use your app if the services are set up correctly.\n"
 	) &
 done
 wait
