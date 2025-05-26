@@ -77,7 +77,7 @@ for i in "$@"; do
         if [[ "$setup" != "full" && "$setup" != "only" ]]; then
             echo -e "${BRed}Error: Invalid setup option '$setup'. Please use 'full' or 'only'. ${Color_Off}"
             exit 1
-        else
+        elif [ -z "$SETUP_COMMAND" ]; then
             echo -e "\nYou included the setup option '$setup'. (Please be careful with this option, as it can cause issues if not used correctly.)"
             printf "${BCyan}How many commands do you want to run on the remote server(s)?: ${Color_Off}"
             read -r NUMBER
@@ -139,7 +139,7 @@ if [ -z "$PROJECT_NAME" ]; then
     echo -e "${Cyan}Please note that the project name must match the name of the folder in which the project is located.${Color_Off}"
 fi
 
-echo -e "${BGreen}Welcome to the ${BBlue}${PROJECT_NAME}'s ${BGreen}Deployment!${Color_Off}\n"
+echo -e "\n${BGreen}Welcome to the ${BBlue}${PROJECT_NAME} project ${BGreen}deployment!${Color_Off}\n"
 
 # Check if host command is available
 if ! command -v host &> /dev/null
@@ -162,7 +162,7 @@ if [ "$TYPE" == "domain" ]; then
             exit 1
         fi
     done
-    echo -e "${Green}Done! All domain names are valid.${Color_Off}\n"
+    echo -e "${Green}Done! All domain names are valid.${Color_Off}"
 else
     # Check for valid IP addresses
     for s in "${SERVERS[@]}"; do
@@ -252,8 +252,8 @@ if [ ! -d "$inputFile" ]; then
 fi
 
 # Countdown
-echo -e "${BCyan}After this operation, the deployed version will be stored in the folder 'versions/'"
-echo -e "Deployment will commence in 10 seconds. Check if you entered correct information. \nPress ctrl c, to cancel if you made a mistake.${Color_Off}\n"
+echo -e "${Cyan}After this operation, the deployed version will be stored in the folder 'versions/'"
+echo -e "${Color_Off}Deployment will commence in 10 seconds. Check if you entered correct information. \nPress ctrl c, to cancel if you made a mistake.\n"
 
 spinner="/|\\-/"
 for ((j=10; j>0; j--)); do
@@ -276,16 +276,16 @@ if [ ! -d "$inputFile/versions" ]; then
 fi
 
 # Create and transfer archive, then deploy to servers
-tar --exclude="versions" --exclude=".git" -czf "$inputFile/versions/$file.tgz" -C "$inputFile" .
-echo -e "${Cyan}Archive created successfully. Beginning deployment...${Color_Off}\n"
+tar --exclude="versions" --exclude=".git" --exclude="node_modules" -czf "$inputFile/versions/$file.tgz" -C "$inputFile" .
+echo -e "\n${Cyan}Archive created successfully. Beginning deployment...${Color_Off}\n"
 
 for i in "${SERVERS[@]}"; do
 	(
-    echo -e "${BBlue}Deploying on server: ${BYellow}\t$i\t...\n${Color_Off}"
+    echo -e "${BBlue}   Deploying on server: ${BYellow}\t$i\t...\n${Color_Off}"
     if [[ "$*" =~ (^|[[:space:]])--apt-update($|[[:space:]]) ]]; then
         echo -e "${Cyan}Running apt-get update...${Color_Off}"
         ssh -i "$SSH_KEY" "$SSH_USER@$i" "sudo apt-get update"
-        echo -e "${Cyan}Server updated successfully.${Color_Off}"
+        echo -e "\n${Cyan}Server updated successfully.${Color_Off}\n"
     fi
 
     scp -i "$SSH_KEY" "$inputFile/versions/$file.tgz" "$SSH_USER@$i:/tmp/"
@@ -295,27 +295,29 @@ for i in "${SERVERS[@]}"; do
     ssh -i "$SSH_KEY" "$SSH_USER@$i" "mkdir -p $DEPLOY_DIR/new && tar -xzf /tmp/$file.tgz -C $DEPLOY_DIR/new && mv $DEPLOY_DIR/new $DEPLOY_DIR/$file"
     echo -e "${Cyan}Here are the new contents of the releases directory:${Color_Off}\n"
 
+    define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"https://$i/api\\\"#' $JSHOST" || echo "echo 'No JSHOST Defined. Skipping modification.'")
+
     ssh -i "$SSH_KEY" "$SSH_USER@$i" "sudo rm -rf $DEPLOY_DIR/new/ && ls $DEPLOY_DIR/ | sed 's/^/\t\t\t/' && sudo rm -rf $DEPLOY_DIR/../current && ln -s $DEPLOY_DIR/$file $DEPLOY_DIR/../current"
     echo -e "\n${Green}Finished making a symbolic link for the new release. Deleting old releases...${Color_Off}\n"
-    ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/ && ls -ut | grep $PROJECT_NAME | tail -n +$((KEEP + 1)) | xargs rm -rf"
+    ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/ && ls -ut | grep $PROJECT_NAME | tail -n +$((KEEP + 1)) | xargs rm -rf && cd $DEPLOY_DIR/$file && $define_api"
     cd "$PROJECT_NAME/versions" && ls -ut | grep "$PROJECT_NAME" | tail -n +$((KEEP + 1)) | xargs rm -rf && cd - > /dev/null
 
     echo -e "${Cyan}Deleted old releases, keeping the last $KEEP versions.${Color_Off}\n"
-    if [ "$setup" == 'full' ]; then
-        ssh -T -i "$SSH_KEY" "$SSH_USER@$i" "$SETUP_COMMAND"
-        echo -e "${Cyan}Setup command executed successfully.${Color_Off}\n"
-    fi
 
     if [[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]]; then
         echo -e "${Cyan}Running npm install on the latest version...${Color_Off}\n"
         ssh -i "$SSH_KEY" "$SSH_USER@$i" "cd $DEPLOY_DIR/$file/$NODE_HOME && if which npm >/dev/null 2>&1; then npm install && echo -e '${Cyan}Npm install was a success.${Color_Off}\n'; else echo -e '${Red}Npm not found. Please install it.\n${Color_Off}'; fi"
     fi
 
-    define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"$i\\\"#' $JSHOST" || echo "echo 'No JSHOST Defined. Skipping modification.'")
+    if [ "$setup" == 'full' ]; then
+        ssh -T -i "$SSH_KEY" "$SSH_USER@$i" "$SETUP_COMMAND"
+        echo -e "${Cyan}Setup command executed successfully.${Color_Off}\n"
+    fi
 
+    echo -e "${Yellow}BEGIN Server MOTD: \n${Color_Off}"
     ssh -T -i "$SSH_KEY" "$SSH_USER@$i" <<EOF
+        echo -e "\n${Yellow}END Server MOTD.${Color_Off}\n"
         cd $DEPLOY_DIR/$file/ && sudo rm -rf /tmp/$file.tgz
-        $define_api
         if [ -n "${restart_services[@]}" ]; then
             if sudo systemctl status ${restart_services} >/dev/null 2>&1; then
                 echo "\n${Green}✅ Services are running fine.${Color_off} Restarting: ${restart_services[@]}"
