@@ -182,10 +182,39 @@ for i in "${SERVICES[@]}"; do
   fi
 done
 
+ssh_key_given=false
+if [[ -n "$SSH_KEY" ]]; then
+  ssh_key_given=true
+fi
+
+# Install sshpass if needed
+if [[ "$ssh_key_given" == "false" ]]; then
+  if ! command -v sshpass &>/dev/null; then
+    echo -e "${Cyan}sshpass not found. Installing sshpass...${Color_Off}"
+    sudo apt-get update && sudo apt-get install -y sshpass
+    echo -e "${Green}sshpass installed successfully.${Color_Off}"
+  fi
+fi
+
 if [ -n "$ROLLBACK" ]; then
   if [[ -n "${SERVERS[*]}" && -n "${SERVICES[*]}" ]]; then
     for i in "${SERVERS[@]}"; do
       (
+        read -s -p "[sudo] password for $SSH_USER@$i (Press ENTER if not required): " SUDO_PASS
+        echo ""
+        # Determine ssh authentication args
+        if [[ "$ssh_key_given" == "true" ]]; then
+          ssh_auth=(-i "$SSH_KEY")
+          ssh_prefix=() # no sshpass
+        else
+          ssh_auth=(-o PreferredAuthentications=password -o PubkeyAuthentication=no)
+          if [[ -z "$SUDO_PASS" ]]; then
+            echo -e "${BYellow}Warning:${Color_Off} ${Yellow}No SSH key or password provided. Skipping $i...${Color_Off}"
+            continue
+          fi
+          ssh_prefix=(sshpass -p "$SUDO_PASS")
+        fi
+
         echo -e "${BBlue}Rolling back on server: ${BYellow}\t$i\t...\n${Color_Off}"
         ssh -i "$SSH_KEY" "$SSH_USER@$i" "bash -c '
                 cd $DEPLOY_DIR/
@@ -201,6 +230,7 @@ if [ -n "$ROLLBACK" ]; then
             '"
       ) &
     done
+    wait
     echo -e "${BCyan}Done. Bye!${Color_Off}"
     exit 0
   else
@@ -213,13 +243,28 @@ echo -e "\n${BYellow}Please note that this script does not provide full graceful
 if [ "$setup" == "only" ]; then
   for i in "${SERVERS[@]}"; do
     (
-      define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"$i\\\"#' $JSHOST" || echo "echo 'No JSHOST Defined. Skipping modification.'")
+      read -s -p "[sudo] password for $SSH_USER@$i (Press ENTER if not required): " SUDO_PASS
+      echo ""
+      define_api=$([ -n "$JSHOST" ] && echo "sed -i 's#undefined#\\\"$i\\\"#' $JSHOST" || echo "")
+
+      # Determine ssh authentication args
+      if [[ "$ssh_key_given" == "true" ]]; then
+        ssh_auth=(-i "$SSH_KEY")
+        ssh_prefix=() # no sshpass
+      else
+        ssh_auth=(-o PreferredAuthentications=password -o PubkeyAuthentication=no)
+        if [[ -z "$SUDO_PASS" ]]; then
+          echo -e "${BYellow}Warning:${Color_Off} ${Yellow}No SSH key or password provided. Skipping $i...${Color_Off}"
+          continue
+        fi
+        ssh_prefix=(sshpass -p "$SUDO_PASS")
+      fi
 
       echo -e "${Green}Skipping deployment and going for server setup. This will fail if there is no deployed version.${Color_Off}\n"
       echo -e "${Yellow}BEGIN Server MOTD: \n${Color_Off}"
       ssh -T -q -i "$SSH_KEY" "$SSH_USER@$i" <<EOF
             echo -e "${Yellow}END Server MOTD.${Color_Off}\n"
-            "$SETUP_COMMAND"
+            $SETUP_COMMAND
             cd $DEPLOY_DIR/../current/$NODE_HOME
             if which npm >/dev/null 2>&1 && [[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]]; then
                 npm install && echo -e "${Cyan}Npm install was a success.${Color_Off}\n"
@@ -240,6 +285,7 @@ if [ "$setup" == "only" ]; then
 EOF
     ) &
   done
+  wait
   echo -e "\n${BCyan}Done. Bye!${Color_Off}"
   exit 0
 fi
@@ -303,20 +349,6 @@ echo -e "\n${Cyan}Archive created successfully. Beginning deployment...${Color_O
 apt_flag_passed=$([[ "$*" =~ (^|[[:space:]])--apt-update($|[[:space:]]) ]] && echo "true" || echo "false")
 npm_flag_passed=$([[ "$*" =~ (^|[[:space:]])--npm($|[[:space:]]) ]] && echo "true" || echo "false")
 
-ssh_key_given=false
-if [[ -n "$SSH_KEY" ]]; then
-  ssh_key_given=true
-fi
-
-# Install sshpass if needed
-if [[ "$ssh_key_given" == "false" ]]; then
-  if ! command -v sshpass &>/dev/null; then
-    echo -e "${Cyan}sshpass not found. Installing sshpass...${Color_Off}"
-    sudo apt-get update && sudo apt-get install -y sshpass
-    echo -e "${Green}sshpass installed successfully.${Color_Off}"
-  fi
-fi
-
 for i in "${SERVERS[@]}"; do
   # read sudo password once per server
   read -s -p "[sudo] password for $SSH_USER@$i (Press ENTER if not required): " SUDO_PASS
@@ -335,7 +367,7 @@ for i in "${SERVERS[@]}"; do
       ssh_auth=(-o PreferredAuthentications=password -o PubkeyAuthentication=no)
       if [[ -z "$SUDO_PASS" ]]; then
         echo -e "${BYellow}Warning:${Color_Off} ${Yellow}No SSH key or password provided. Skipping $i...${Color_Off}"
-        exit 1
+        continue
       fi
       ssh_prefix=(sshpass -p "$SUDO_PASS")
     fi
