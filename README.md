@@ -209,5 +209,3 @@ MIT License © 2025 [Buffer Punk](https://github.com/bufferpunk)
 
 Pull requests are welcome!
 Please open an issue first to discuss proposed changes.
-
-Would you like me to add **example configuration files (`dev.conf`, `prod.conf`)** and **usage output examples** to this README too? They’d make it perfect for GitHub.
