@@ -16,7 +16,7 @@ source "$SCRIPT_DIR/awesome.conf" # For colors and Usage message
 set -e
 trap 'echo -e "\n${BRed}Error: An error occurred during deployment. Please check your inputs and try again.${Color_Off}"' ERR
 
-SCRIPT_PATH="$DIR/$(basename "$SOURCE")"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename $SOURCE)"
 IN_PATH=false
 IFS=':' read -ra PATH_DIRS <<<"$PATH"
 for dir in "${PATH_DIRS[@]}"; do
@@ -218,10 +218,9 @@ if [ -n "$ROLLBACK" ]; then
         echo -e "${BBlue}Rolling back on server: ${BYellow}\t$i\t...\n${Color_Off}"
         ssh -i "$SSH_KEY" "$SSH_USER@$i" "bash -c '
                 cd $DEPLOY_DIR/
-                rm -rf ../current
                 f=\$(ls -ut | grep $PROJECT_NAME | head -n +$((ROLLBACK)) | tail -n +$((ROLLBACK)))
                 echo -e \"${Cyan}Rolling back to version: ${BCyan}\$f${Color_Off}\n\"
-                ln -s \$(readlink -f \$f) ../current
+                ln -sfn \$(readlink -f \$f) ../current
                 ls -l .. | grep current
                 sudo systemctl restart ${restart_services[*]}
                 echo -e \"${Cyan}Service statuses after restart:${Color_Off}\n\"
@@ -401,8 +400,7 @@ for i in "${SERVERS[@]}"; do
 
       mkdir -p $DEPLOY_DIR/new && tar -xzf /tmp/$file.tgz -C $DEPLOY_DIR/new && mv $DEPLOY_DIR/new $DEPLOY_DIR/$file
       sudo rm -rf $DEPLOY_DIR/new/
-      sudo rm -rf $DEPLOY_DIR/../current
-      ln -s $DEPLOY_DIR/$file $DEPLOY_DIR/../current
+      ln -sfn $DEPLOY_DIR/$file $DEPLOY_DIR/../current
       echo -e "${Green}Finished making a symbolic link for the new release. Deleting old releases...${Color_Off}"
       cd $DEPLOY_DIR/ && ls -ut | grep $PROJECT_NAME | tail -n +$((KEEP + 1)) | xargs rm -rf && cd $DEPLOY_DIR/$file && $define_api
 
